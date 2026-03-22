@@ -1,5 +1,13 @@
 # CHANGELOG
 
+## v1.0.6
+
+- update readme for npm
+
+## v1.0.5
+
+- update depends
+
 ## v1.0.4
 
 - Fixed QR code creation

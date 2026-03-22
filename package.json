@@ -1,7 +1,7 @@
 {
   "name": "@nxyy/discord-tqr",
-  "version": "1.0.5",
-  "description": "Generate QR code to get user token to take control of the account, get informations ...",
+  "version": "1.0.6",
+  "description": "Generate QR Code for discord login.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {

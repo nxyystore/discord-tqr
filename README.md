@@ -1,4 +1,4 @@
-# Discord-tqr
+# Discord-TQR
 
 Generate QR code to get user token to take control of the account, get informations ...
 
@@ -8,8 +8,8 @@ See the [changelog](CHANGELOG.md)
 
 ## 💻 Installation
 
-```
-$ npm i discord-tqr
+```bash
+npm i @nxyy/discord-tqr
 ```
 
 ## 📚 Usage
@@ -17,9 +17,9 @@ $ npm i discord-tqr
 ### Import
 
 ```js
-import DiscordTQR from "discord-tqr";
+import DiscordTQR from "@nxyy/discord-tqr";
 //or
-const DiscordTQR = require("discord-tqr").default;
+const DiscordTQR = require("@nxyy/discord-tqr").default;
 ```
 
 ### API
@@ -103,7 +103,7 @@ const user = await handler.getDiscordAccountInfo(token?: string);
 
 Open a discord account in chromium with puppeteer and with the token
 
-### options:
+### options
 
 - `token?`: string - The token of the user by default it's the token from `listForToken` method
 - `browserOptions?`: PuppeteerLaunchOptions - Browser options for puppeter by default it's `{ headless: false, defaultViewport: null, args: ["--start-fullscreen"] }`
@@ -124,7 +124,7 @@ await handler.closeConnection();
 
 ```js
 const path = require("path");
-const DiscordTQR = require("discord-tqr").default;
+const DiscordTQR = require("@nxyy/discord-tqr").default;
 
 (async function () {
   try {
