@@ -12,11 +12,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const jimg_1 = __importDefault(require("jimg"));
+const jimg_1 = __importDefault(require("@nxyy/jimg"));
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
-const node_fetch_1 = __importDefault(require("node-fetch"));
 class DiscordTQR {
     constructor(token) {
         this.token = token;
@@ -41,15 +40,15 @@ class DiscordTQR {
      * @param options
      * @returns
      */
-    getQRCode(options = {}) {
-        return __awaiter(this, void 0, void 0, function* () {
+    getQRCode() {
+        return __awaiter(this, arguments, void 0, function* (options = {}) {
             if (typeof options.template === "string" && options.template !== "default")
                 throw new Error("Invalide value for 'template'");
             if (this.$browser || this.$page)
                 yield this.closeConnection();
             this.$browser = yield puppeteer_1.default.launch((options === null || options === void 0 ? void 0 : options.browserOptions)
                 ? options.browserOptions
-                : { headless: "new", defaultViewport: null });
+                : { headless: "shell", defaultViewport: null });
             this.$page = (yield this.$browser.pages())[0];
             const page = this.$page;
             yield page.setViewport({
@@ -66,7 +65,8 @@ class DiscordTQR {
                 yield new Promise((r) => setTimeout(r, options.wait));
             const qrC = yield page.$('[class^="qrCodeOverlay"]');
             let data = yield qrC.screenshot(Object.assign(Object.assign(Object.assign({}, (options.path && !options.template ? { path: options.path } : {})), (options.encoding ? { path: options.encoding } : {})), { captureBeyondViewport: false }));
-            let finalImageBase64 = data instanceof Buffer ? data.toString("base64") : data;
+            let finalImageBase64 = data instanceof Buffer ? data.toString("base64") :
+                data instanceof Uint8Array ? Buffer.from(data).toString("base64") : data;
             //template
             if (options.template) {
                 const tmpFile = path_1.default.resolve(__dirname, "./tmp.png");
@@ -134,11 +134,11 @@ class DiscordTQR {
             token = token !== null && token !== void 0 ? token : this.token;
             if (!token)
                 throw new Error("Invalide token");
-            const scrapInfo = yield (0, node_fetch_1.default)(this.config.discordUserApi, {
+            const scrapInfo = yield fetch(this.config.discordUserApi, {
                 headers: { Authorization: token },
             });
             const info = yield scrapInfo.json();
-            const scrapSub = yield (0, node_fetch_1.default)(this.config.discordSubscriptionApi, {
+            const scrapSub = yield fetch(this.config.discordSubscriptionApi, {
                 headers: { Authorization: token },
             });
             const sub = yield scrapSub.json();
@@ -152,9 +152,9 @@ class DiscordTQR {
      * @param options
      * @returns
      */
-    openDiscordAccount(options = {}) {
-        var _a;
-        return __awaiter(this, void 0, void 0, function* () {
+    openDiscordAccount() {
+        return __awaiter(this, arguments, void 0, function* (options = {}) {
+            var _a;
             const token = (_a = options === null || options === void 0 ? void 0 : options.token) !== null && _a !== void 0 ? _a : this.token;
             if (!token)
                 throw new Error("Invalide token");

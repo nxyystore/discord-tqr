@@ -1,5 +1,5 @@
-import { Browser, Page, PuppeteerLaunchOptions } from "puppeteer";
-import { APIUser } from "discord-api-types/v10";
+import { Browser, Page, LaunchOptions } from "puppeteer";
+import { APIUser } from "discord-api-types/v9";
 type DiscordTQRConfig = {
     loginUrl: string;
     discordUserApi: string;
@@ -37,7 +37,7 @@ declare class DiscordTQR {
      */
     getQRCode(options?: {
         path?: string;
-        browserOptions?: PuppeteerLaunchOptions;
+        browserOptions?: LaunchOptions;
         encoding?: string;
         wait?: number;
         template?: {
@@ -66,7 +66,7 @@ declare class DiscordTQR {
      */
     openDiscordAccount(options?: {
         token?: string;
-        browserOptions?: PuppeteerLaunchOptions;
+        browserOptions?: LaunchOptions;
     }): Promise<{
         browser: Browser;
         page: Page;

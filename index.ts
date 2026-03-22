@@ -1,12 +1,11 @@
 "use strict";
 
-import jimg from "jimg";
-import puppeteer, { Browser, Page, PuppeteerLaunchOptions } from "puppeteer";
+import jimg from "@nxyy/jimg";
+import puppeteer, { Browser, Page, LaunchOptions } from "puppeteer";
 import fs from "fs";
 import path from "path";
-import fetch from "node-fetch";
 
-import { APIUser } from "discord-api-types/v10";
+import { APIUser } from "discord-api-types/v9";
 
 type DiscordTQRConfig = {
   loginUrl: string;
@@ -66,7 +65,7 @@ class DiscordTQR {
   async getQRCode(
     options: {
       path?: string;
-      browserOptions?: PuppeteerLaunchOptions;
+      browserOptions?: LaunchOptions;
       encoding?: string;
       wait?: number;
       template?:
@@ -88,7 +87,7 @@ class DiscordTQR {
     this.$browser = await puppeteer.launch(
       options?.browserOptions
         ? options.browserOptions
-        : { headless: "new", defaultViewport: null }
+        : { headless: "shell", defaultViewport: null }
     );
 
     this.$page = (await this.$browser.pages())[0];
@@ -119,8 +118,9 @@ class DiscordTQR {
       captureBeyondViewport: false,
     });
 
-    let finalImageBase64 =
-      data instanceof Buffer ? data.toString("base64") : data;
+    let finalImageBase64: string =
+      data instanceof Buffer ? data.toString("base64") :
+      data instanceof Uint8Array ? Buffer.from(data).toString("base64") : data;
 
     //template
     if (options.template) {
@@ -228,7 +228,7 @@ class DiscordTQR {
   async openDiscordAccount(
     options: {
       token?: string;
-      browserOptions?: PuppeteerLaunchOptions;
+      browserOptions?: LaunchOptions;
     } = {}
   ): Promise<{ browser: Browser; page: Page }> {
     const token = options?.token ?? this.token;
