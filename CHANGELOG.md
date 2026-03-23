@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## v2.0.0
+
+- rewritten to use remote auth websocket endpoint
+
 ## v1.0.6
 
 - update readme for npm

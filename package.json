@@ -1,6 +1,6 @@
 {
   "name": "@nxyy/discord-tqr",
-  "version": "1.0.6",
+  "version": "2.0.0",
   "description": "Generate QR Code for discord login.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,10 +16,11 @@
   "license": "MIT",
   "dependencies": {
     "@nxyy/jimg": "^1.0.3",
-    "discord-api-types": "^0.38.42",
-    "puppeteer": "^24.40.0"
+    "discord-api-types": "^0.38.42"
   },
   "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "server-only": "^0.0.1",
     "typescript": "^5.3.0"
   }
 }

@@ -1,78 +1,56 @@
-import { Browser, Page, LaunchOptions } from "puppeteer";
-import { APIUser } from "discord-api-types/v9";
 type DiscordTQRConfig = {
-    loginUrl: string;
-    discordUserApi: string;
-    discordSubscriptionApi: string;
-    httpHeader: Record<string, string>;
+    remoteAuthGateway: string;
+    discordRemoteAuthLogin: string;
 };
-type UserInfo = APIUser & {
-    user: string;
-    avatar_url: string;
-    subscription: BillingSubscriptionsResponse;
-};
-interface BillingSubscription {
+type UserInfo = {
     id: string;
-    planId: string;
-    status: string;
-    currentPeriodStart: string;
-    currentPeriodEnd: string;
-    created: string;
-}
-interface BillingSubscriptionsResponse {
-    subscriptions: BillingSubscription[];
-}
+    discriminator: number;
+    avatar: string;
+    username: string;
+};
 declare class DiscordTQR {
-    token?: string;
-    private $browser;
-    private $page;
+    userToken?: string;
+    private ws;
+    private heartbeatInterval;
+    private timeoutMs;
+    private keyPair;
+    private fingerprint;
+    private user;
+    private token;
     qr: string;
-    user: UserInfo;
     config: DiscordTQRConfig;
-    constructor(token?: string);
+    constructor(userToken?: string);
+    private generateKeyPair;
+    private encryptWithPublicKey;
+    private decryptWithPrivateKey;
+    private generateProof;
+    private decodeUserPayload;
+    private generateQRCode;
+    private sendPacket;
+    private startHeartbeat;
+    private stopHeartbeat;
+    private getPublicKeyBase64;
+    private getFingerprintFromPublicKey;
+    private getPrivateKey;
     /**
-     * Create a login QR Code
-     * @param options
-     * @returns
+     * Start the remote auth flow and generate a QR code
+     * @returns The QR code URL for display
      */
-    getQRCode(options?: {
-        path?: string;
-        browserOptions?: LaunchOptions;
-        encoding?: string;
-        wait?: number;
-        template?: {
-            path: string;
-            x?: number;
-            y?: number;
-            width?: number;
-            height?: number;
-        } | "default";
-    }): Promise<string>;
+    startRemoteAuth(): Promise<string>;
+    private handlePacket;
+    private exchangeTicketForToken;
     /**
-     * Listen for token and return it when the program get it
-     * @returns
+     * Get the scanned user info
+     * @returns User info from the scanned QR code
      */
-    listenForToken(): Promise<string>;
+    getUser(): UserInfo | null;
     /**
-     * Return informations about the user account from the discord api like email, phone, name...
-     * @param token
-     * @returns
+     * Get the authentication token
+     * @returns The Discord token
      */
-    getDiscordAccountInfo(token?: string): Promise<UserInfo>;
+    getToken(): string | null;
     /**
-     * Open the discord account in puppeter and return the browser and page corresponding
-     * @param options
-     * @returns
-     */
-    openDiscordAccount(options?: {
-        token?: string;
-        browserOptions?: LaunchOptions;
-    }): Promise<{
-        browser: Browser;
-        page: Page;
-    }>;
-    /**
-     * Close the opened browser used to generate QR Code and to listen the token
+     * Close the WebSocket connection
      */
     closeConnection(): Promise<void>;
 }

